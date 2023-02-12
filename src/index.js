@@ -189,17 +189,19 @@ async function run() {
     core.setOutput('task-definition-arn', taskDefArn);
 
     // TODO: Batch this?
-    const data = await cwe.listRules().promise();
-    const rules = (data && data.Rules) || [];
-    await Promise.all(
-      rules
-        .filter((rule) => {
-          return rule.Name.startsWith(rulePrefix);
-        })
-        .map((rule) => {
-          return processCloudwatchEventRule(cwe, rule, cluster, taskDefArn);
-        })
-    );
+    if (cluster && rulePrefix) {
+      const data = await cwe.listRules().promise();
+      const rules = (data && data.Rules) || [];
+      await Promise.all(
+        rules
+          .filter((rule) => {
+            return rule.Name.startsWith(rulePrefix);
+          })
+          .map((rule) => {
+            return processCloudwatchEventRule(cwe, rule, cluster, taskDefArn);
+          })
+      );
+    }
   } catch (error) {
     core.setFailed(error.message);
     core.debug(error.stack);
