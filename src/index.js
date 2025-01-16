@@ -58,7 +58,7 @@ function cleanNullKeys(obj) {
 
 function removeIgnoredAttributes(taskDef) {
   for (const attribute of IGNORED_TASK_DEFINITION_ATTRIBUTES) {
-    if (taskDef[attribute]) {
+    if (attribute in taskDef) {
       core.warning(
         `Ignoring property '${attribute}' in the task definition file. ` +
           'This property is returned by the Amazon ECS DescribeTaskDefinition API and may be shown in the ECS console, ' +
