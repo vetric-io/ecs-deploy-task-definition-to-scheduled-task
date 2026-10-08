@@ -36754,7 +36754,7 @@ async function processCloudwatchEventRule(
   const ruleTargets = data && data.Targets;
   core.debug(`Rule targets for ${ruleName}: ${JSON.stringify(ruleTargets)}`);
 
-  if (!ruleTargets || !ruleTargets.length) return null;
+  if (!ruleTargets || !ruleTargets.length) return 0;
 
   // Return all targets that are relevant to this cluster.
   const ecsClusterTargets = ecsCwe.filterNonEcsClusterTargets(
@@ -36777,7 +36777,7 @@ async function processCloudwatchEventRule(
   );
 
   // Bail if nothing to update.
-  if (!ecsClusterTaskTargets.length) return null;
+  if (!ecsClusterTaskTargets.length) return 0;
 
   // Now we just have to update all the targets that survived.
   const updatedTargets = ecsClusterTaskTargets.map((target) => {
@@ -36788,12 +36788,36 @@ async function processCloudwatchEventRule(
     `Updated targets for ${ruleName}: ${JSON.stringify(updatedTargets)}`
   );
 
-  return cwe
+  const result = await cwe
     .putTargets({
       Rule: ruleName,
       Targets: updatedTargets,
     })
     .promise();
+
+  // PutTargets reports per-target failures in its response, not as an error.
+  if (result && result.FailedEntryCount > 0) {
+    throw new Error(
+      `Failed to update ${result.FailedEntryCount} target(s) of rule ${ruleName}: ` +
+        JSON.stringify(result.FailedEntries)
+    );
+  }
+
+  return updatedTargets.length;
+}
+
+// ListRules returns at most one page per call, so follow NextToken to the end.
+async function listRulesWithPrefix(cwe, rulePrefix) {
+  const rules = [];
+  let nextToken;
+  do {
+    const params = { NamePrefix: rulePrefix };
+    if (nextToken) params.NextToken = nextToken;
+    const data = await cwe.listRules(params).promise();
+    rules.push(...((data && data.Rules) || []));
+    nextToken = data && data.NextToken;
+  } while (nextToken);
+  return rules.filter((rule) => rule.Name.startsWith(rulePrefix));
 }
 
 async function run() {
@@ -36838,19 +36862,20 @@ async function run() {
     const taskDefArn = registerResponse.taskDefinition.taskDefinitionArn;
     core.setOutput('task-definition-arn', taskDefArn);
 
-    // TODO: Batch this?
     if (cluster && rulePrefix) {
-      const data = await cwe.listRules().promise();
-      const rules = (data && data.Rules) || [];
-      await Promise.all(
-        rules
-          .filter((rule) => {
-            return rule.Name.startsWith(rulePrefix);
-          })
-          .map((rule) => {
-            return processCloudwatchEventRule(cwe, rule, cluster, taskDefArn);
-          })
+      const rules = await listRulesWithPrefix(cwe, rulePrefix);
+      const updated = await Promise.all(
+        rules.map((rule) => {
+          return processCloudwatchEventRule(cwe, rule, cluster, taskDefArn);
+        })
       );
+      // A prefix that moves no target leaves every schedule on the previous revision.
+      if (updated.reduce((sum, count) => sum + count, 0) === 0) {
+        throw new Error(
+          `No rule starting with '${rulePrefix}' has an ECS target on cluster ${cluster} ` +
+            `for the family of ${taskDefArn}, so no schedule was updated.`
+        );
+      }
     }
   } catch (error) {
     core.setFailed(error.message);
