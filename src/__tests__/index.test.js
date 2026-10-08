@@ -14,9 +14,6 @@ const mockCweListTargetsByRule = jest.fn();
 const mockCwePutTargets = jest.fn();
 jest.mock('aws-sdk', () => {
   return {
-    config: {
-      region: 'fake-region',
-    },
     CloudWatchEvents: jest.fn(() => ({
       listRules: mockCweListRules,
       listTargetsByRule: mockCweListTargetsByRule,
@@ -25,6 +22,9 @@ jest.mock('aws-sdk', () => {
     ECS: jest.fn(() => ({
       registerTaskDefinition: mockEcsRegisterTaskDef,
     })),
+    config: {
+      region: 'fake-region',
+    },
   };
 });
 
@@ -41,7 +41,6 @@ describe('Deploy to ECS', () => {
     core.getInput = jest
       .fn()
       .mockReturnValueOnce('task-definition.json') // task-definition
-      .mockReturnValueOnce('service-456') // service
       .mockReturnValueOnce('cluster-789'); // cluster
 
     process.env = Object.assign(process.env, { GITHUB_WORKSPACE: __dirname });
@@ -89,20 +88,20 @@ describe('Deploy to ECS', () => {
           return Promise.resolve({
             Rules: [
               {
-                Name: 'Sync-Task',
                 Arn: 'arn:aws:events:us-east-1:00000000001:rule/Sync-Task',
-                State: 'ENABLED',
                 Description: 'Foooo.',
-                ScheduleExpression: 'rate(15 minutes)',
                 EventBusName: 'default',
+                Name: 'Sync-Task',
+                ScheduleExpression: 'rate(15 minutes)',
+                State: 'ENABLED',
               },
               {
-                Name: 'Prefixed-Task',
                 Arn: 'arn:aws:events:us-east-1:00000000001:rule/Prefixed-Task',
-                State: 'ENABLED',
                 Description: 'Barrr.',
-                ScheduleExpression: 'rate(20 minutes)',
                 EventBusName: 'default',
+                Name: 'Prefixed-Task',
+                ScheduleExpression: 'rate(20 minutes)',
+                State: 'ENABLED',
               },
             ],
           });
@@ -116,43 +115,43 @@ describe('Deploy to ECS', () => {
           return Promise.resolve({
             Targets: [
               {
-                Id: 'Baz',
                 Arn:
                   'arn:aws:ecs:<REGION>:<ACCOUNT ID>:cluster/another-cluster',
-                RoleArn: 'arn:aws:iam::<ACCOUNT ID>:role/ecsEventsRole',
-                Input:
-                  '{"containerOverrides":[{"name":"Demo","command":["sleep"," 50"]}]}',
                 EcsParameters: {
+                  LaunchType: 'EC2',
+                  TaskCount: 1,
                   TaskDefinitionArn:
                     'arn:aws:ecs:<REGION>:<ACCOUNT ID>:task-definition/task-def-family:1',
-                  TaskCount: 1,
-                  LaunchType: 'EC2',
                 },
-              },
-              {
-                Id: 'Foo',
-                Arn: 'arn:aws:ecs:<REGION>:<ACCOUNT ID>:cluster/fake-cluster',
-                RoleArn: 'arn:aws:iam::<ACCOUNT ID>:role/ecsEventsRole',
+                Id: 'Baz',
                 Input:
                   '{"containerOverrides":[{"name":"Demo","command":["sleep"," 50"]}]}',
+                RoleArn: 'arn:aws:iam::<ACCOUNT ID>:role/ecsEventsRole',
+              },
+              {
+                Arn: 'arn:aws:ecs:<REGION>:<ACCOUNT ID>:cluster/fake-cluster',
                 EcsParameters: {
+                  LaunchType: 'EC2',
+                  TaskCount: 1,
                   TaskDefinitionArn: taskDefinitionArn,
-                  TaskCount: 1,
-                  LaunchType: 'EC2',
                 },
-              },
-              {
-                Id: 'Bar',
-                Arn: 'arn:aws:ecs:<REGION>:<ACCOUNT ID>:cluster/fake-cluster',
-                RoleArn: 'arn:aws:iam::<ACCOUNT ID>:role/ecsEventsRole',
+                Id: 'Foo',
                 Input:
                   '{"containerOverrides":[{"name":"Demo","command":["sleep"," 50"]}]}',
+                RoleArn: 'arn:aws:iam::<ACCOUNT ID>:role/ecsEventsRole',
+              },
+              {
+                Arn: 'arn:aws:ecs:<REGION>:<ACCOUNT ID>:cluster/fake-cluster',
                 EcsParameters: {
+                  LaunchType: 'EC2',
+                  TaskCount: 1,
                   TaskDefinitionArn:
                     'arn:aws:ecs:<REGION>:<ACCOUNT ID>:task-definition/another-task-family:1',
-                  TaskCount: 1,
-                  LaunchType: 'EC2',
                 },
+                Id: 'Bar',
+                Input:
+                  '{"containerOverrides":[{"name":"Demo","command":["sleep"," 50"]}]}',
+                RoleArn: 'arn:aws:iam::<ACCOUNT ID>:role/ecsEventsRole',
               },
             ],
           });
@@ -228,14 +227,14 @@ describe('Deploy to ECS', () => {
     await run();
     expect(core.setFailed).toHaveBeenCalledTimes(0);
     expect(mockEcsRegisterTaskDef).toHaveBeenNthCalledWith(1, {
-      family: 'task-def-family',
       containerDefinitions: [
         {
-          name: 'sample-container',
           cpu: 0,
           essential: false,
+          name: 'sample-container',
         },
       ],
+      family: 'task-def-family',
       requiresCompatibilities: ['EC2'],
     });
   });
@@ -285,7 +284,7 @@ describe('Deploy to ECS', () => {
     );
   });
 
-  test('updates related task def rules', async () => {
+  test('does not touch rules without a rule prefix', async () => {
     core.getInput = jest
       .fn()
       .mockReturnValueOnce('task-definition.json') // task-definition
@@ -294,37 +293,102 @@ describe('Deploy to ECS', () => {
     await run();
     expect(core.setFailed).toHaveBeenCalledTimes(0);
 
-    expect(mockCweListRules).toHaveBeenCalledTimes(1);
-    // Only two list rules, so will only get called twice.
-    expect(mockCweListTargetsByRule).toHaveBeenCalledTimes(2);
-    expect(mockCwePutTargets).toHaveBeenCalledTimes(2);
-
-    const callValue1 = mockCwePutTargets.mock.calls[0][0];
-    expect(callValue1.Rule).toEqual('Sync-Task');
-    expect(Array.isArray(callValue1.Targets)).toBe(true);
-    expect(callValue1.Targets).toHaveLength(1);
-    expect(callValue1.Targets[0].Id).toEqual('Foo');
-
-    const callValue2 = mockCwePutTargets.mock.calls[1][0];
-    expect(callValue2.Rule).toEqual('Prefixed-Task');
-    expect(Array.isArray(callValue2.Targets)).toBe(true);
-    expect(callValue2.Targets).toHaveLength(1);
-    expect(callValue2.Targets[0].Id).toEqual('Foo');
+    expect(mockCweListRules).toHaveBeenCalledTimes(0);
+    expect(mockCweListTargetsByRule).toHaveBeenCalledTimes(0);
+    expect(mockCwePutTargets).toHaveBeenCalledTimes(0);
   });
 
-  test('No updates if no related task def rules', async () => {
+  test('fails when no prefixed rule targets the family on the cluster', async () => {
     core.getInput = jest
       .fn()
       .mockReturnValueOnce('task-definition.json') // task-definition
-      .mockReturnValueOnce('non-existant-cluster'); // cluster - matches above ARN
+      .mockReturnValueOnce('non-existant-cluster') // cluster - matches no target
+      .mockReturnValueOnce('Prefixed-');
+
+    await run();
+
+    expect(mockCweListTargetsByRule).toHaveBeenCalledTimes(1);
+    expect(mockCwePutTargets).toHaveBeenCalledTimes(0);
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    expect(core.setFailed.mock.calls[0][0]).toMatch(
+      /No rule starting with 'Prefixed-'.*no schedule was updated/
+    );
+  });
+
+  test('fails when no rule matches the prefix', async () => {
+    core.getInput = jest
+      .fn()
+      .mockReturnValueOnce('task-definition.json') // task-definition
+      .mockReturnValueOnce('fake-cluster') // cluster - matches above ARN
+      .mockReturnValueOnce('Renamed-');
+
+    await run();
+
+    expect(mockCweListTargetsByRule).toHaveBeenCalledTimes(0);
+    expect(mockCwePutTargets).toHaveBeenCalledTimes(0);
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    expect(core.setFailed.mock.calls[0][0]).toMatch(
+      /No rule starting with 'Renamed-'/
+    );
+  });
+
+  test('asks ListRules for the prefix and follows NextToken', async () => {
+    core.getInput = jest
+      .fn()
+      .mockReturnValueOnce('task-definition.json') // task-definition
+      .mockReturnValueOnce('fake-cluster') // cluster - matches above ARN
+      .mockReturnValueOnce('Prefixed-');
+    mockCweListRules
+      .mockImplementationOnce(
+        awsResponsePromise({
+          NextToken: 'page-2',
+          Rules: [{ Name: 'Prefixed-Task' }],
+        })
+      )
+      .mockImplementationOnce(
+        awsResponsePromise({ Rules: [{ Name: 'Prefixed-Other-Task' }] })
+      );
 
     await run();
     expect(core.setFailed).toHaveBeenCalledTimes(0);
 
-    expect(mockCweListRules).toHaveBeenCalledTimes(1);
-    // Only two list rules, so will only get called twice.
-    expect(mockCweListTargetsByRule).toHaveBeenCalledTimes(2);
-    expect(mockCwePutTargets).toHaveBeenCalledTimes(0);
+    expect(mockCweListRules).toHaveBeenCalledTimes(2);
+    expect(mockCweListRules).toHaveBeenNthCalledWith(1, {
+      NamePrefix: 'Prefixed-',
+    });
+    expect(mockCweListRules).toHaveBeenNthCalledWith(2, {
+      NamePrefix: 'Prefixed-',
+      NextToken: 'page-2',
+    });
+    expect(mockCwePutTargets).toHaveBeenCalledTimes(2);
+    expect(mockCwePutTargets.mock.calls.map((call) => call[0].Rule)).toEqual([
+      'Prefixed-Task',
+      'Prefixed-Other-Task',
+    ]);
+  });
+
+  test('fails when PutTargets reports failed entries', async () => {
+    core.getInput = jest
+      .fn()
+      .mockReturnValueOnce('task-definition.json') // task-definition
+      .mockReturnValueOnce('fake-cluster') // cluster - matches above ARN
+      .mockReturnValueOnce('Prefixed-');
+    mockCwePutTargets.mockImplementation(
+      awsResponsePromise({
+        FailedEntries: [
+          { ErrorCode: 'ConcurrentModificationException', TargetId: 'Foo' },
+        ],
+        FailedEntryCount: 1,
+      })
+    );
+
+    await run();
+
+    expect(mockCwePutTargets).toHaveBeenCalledTimes(1);
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    expect(core.setFailed.mock.calls[0][0]).toMatch(
+      /Failed to update 1 target\(s\) of rule Prefixed-Task: .*ConcurrentModificationException/
+    );
   });
 
   test('updates prefixed task def rules', async () => {
@@ -338,6 +402,9 @@ describe('Deploy to ECS', () => {
     expect(core.setFailed).toHaveBeenCalledTimes(0);
 
     expect(mockCweListRules).toHaveBeenCalledTimes(1);
+    expect(mockCweListRules).toHaveBeenNthCalledWith(1, {
+      NamePrefix: 'Prefixed-',
+    });
     // Only one prefixed list rule, so will only get called once.
     expect(mockCweListTargetsByRule).toHaveBeenCalledTimes(1);
     expect(mockCwePutTargets).toHaveBeenCalledTimes(1);
@@ -365,6 +432,11 @@ describe('Deploy to ECS', () => {
   });
 
   test('error is caught if listRules fails', async () => {
+    core.getInput = jest
+      .fn()
+      .mockReturnValueOnce('task-definition.json') // task-definition
+      .mockReturnValueOnce('fake-cluster') // cluster - matches above ARN
+      .mockReturnValueOnce('Prefixed-');
     const msg = 'Foo bar';
     mockCweListRules.mockImplementation(
       awsResponsePromise(() => {
