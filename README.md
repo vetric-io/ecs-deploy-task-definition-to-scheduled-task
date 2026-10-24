@@ -1,4 +1,6 @@
 ## ECS "Deploy Task Definition to Scheduled Tasks" Action for GitHub Actions
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fvetric-io%2Fecs-deploy-task-definition-to-scheduled-task.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fvetric-io%2Fecs-deploy-task-definition-to-scheduled-task?ref=badge_shield)
+
 
 Registers an Amazon ECS task definition and deploys it to scheduled tasks in a given ECS cluster
 
@@ -97,3 +99,6 @@ This action emits debug logs to help troubleshoot deployment failures. To see th
 ## License Summary
 
 This code is made available under the MIT license.
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fvetric-io%2Fecs-deploy-task-definition-to-scheduled-task.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fvetric-io%2Fecs-deploy-task-definition-to-scheduled-task?ref=badge_large)
