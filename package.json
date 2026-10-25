@@ -22,7 +22,7 @@
     "eslint": "eslint src/**.js",
     "eslint:fix": "eslint src/**.js --fix",
     "lint": "run-s {prettier:check,eslint}",
-    "package": "ncc build src/index.js -o dist",
+    "package": "ncc build src/index.js -o dist --license licenses.txt && node scripts/append-notices.js",
     "prettier": "prettier './**/*.{js,json,md,yml}' '!./coverage/**' '!./dist/**'",
     "prettier:check": "npm run prettier -- --check",
     "prettier:fix": "npm run prettier -- --write",

@@ -97,3 +97,5 @@ This action emits debug logs to help troubleshoot deployment failures. To see th
 ## License Summary
 
 This code is made available under the MIT license.
+
+The packaged action in `dist/index.js` bundles third-party packages; their licences and notices are in [`dist/licenses.txt`](dist/licenses.txt).
